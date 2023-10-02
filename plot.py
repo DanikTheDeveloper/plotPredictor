@@ -3,8 +3,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button
 from datetime import datetime
-from scipy.stats import pearsonr
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from cython_funcs import similarity
+from scipy.stats import pearsonr
 
 
 class SharePriceViewer:
@@ -19,7 +20,7 @@ class SharePriceViewer:
         self.df = self.generate_data()
         self.fig, self.ax = plt.subplots()
         plt.subplots_adjust(bottom=0.3)
-        self.vline = None  # Add this line to initialize vline as None
+        self.vline = None
         self.setup_plot()
         self.slider, self.vline_slider, self.similarity_slider, self.button = self.create_widgets()
         plt.show()
