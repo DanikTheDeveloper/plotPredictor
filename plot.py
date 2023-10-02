@@ -4,109 +4,98 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button
 from datetime import datetime
 from scipy.stats import pearsonr
-
-# Variables
-start_time = datetime(2022, 1, 1)  # Start time
-end_time = datetime.now()  # End time
-frequency = '1H'  # Frequency (1 hour)
-searchStart = None  # The selected timestamp variable
-similarity_rate = 0  # Similarity rate
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-# Generate sample data
-date_rng = pd.date_range(start=start_time, end=end_time, freq=frequency)
-prices = np.random.randint(100, 500, size=(len(date_rng),))
+class SharePriceViewer:
 
-df = pd.DataFrame(date_rng, columns=['date'])
-df['price'] = prices
+    def __init__(self):
+        self.start_time = datetime(2022, 1, 1)
+        self.end_time = datetime.now()
+        self.frequency = '1H'
+        self.searchStart = None
+        self.similarity_rate = 0
+        self.window_size = 100
+        self.df = self.generate_data()
+        self.fig, self.ax = plt.subplots()
+        plt.subplots_adjust(bottom=0.3)
+        self.vline = None  # Add this line to initialize vline as None
+        self.setup_plot()
+        self.slider, self.vline_slider, self.similarity_slider, self.button = self.create_widgets()
+        plt.show()
 
-# Calculate differences
-df['diff'] = df['price'].diff().fillna(0)
+    def generate_data(self):
+        date_rng = pd.date_range(start=self.start_time, end=self.end_time, freq=self.frequency)
+        prices = np.random.randint(100, 500, size=(len(date_rng),))
+        df = pd.DataFrame(date_rng, columns=['date'])
+        df['price'] = prices
+        return df
 
+    def similarity(self, start, end, target):
+        pattern = self.df['price'][start:end].values
+        target_pattern = self.df['price'][target:target + (end - start)].values
+        if len(pattern) != len(target_pattern):
+            return 0
+        correlation, _ = pearsonr(pattern, target_pattern)
+        similarity = max(0, correlation * 100)
+        return similarity
 
-# Pattern similarity function
-def similarity(start, end, target):
-    pattern = df['price'][start:end].values
-    target_pattern = df['price'][target:target + (end - start)].values
-    if len(pattern) != len(target_pattern):
-        return 0
-    correlation, _ = pearsonr(pattern, target_pattern)
-    similarity = max(0, correlation * 100)
-    return similarity
+    def setup_plot(self):
+        self.ax.scatter(self.df['date'], self.df['price'])
+        self.ax.set_xlabel('Time')
+        self.ax.set_ylabel('Price')
+        self.ax.set_title('Share Price Over Time')
+        self.ax.set_xlim(self.df['date'][0], self.df['date'][self.window_size])
+        self.vline = self.ax.axvline(x=self.df['date'][0], color='red')
 
+    def create_widgets(self):
+        axslider = plt.axes([0.2, 0.2, 0.65, 0.03])
+        slider = Slider(axslider, 'Date', 0, len(self.df) - self.window_size, valinit=0, valstep=1)
+        slider.on_changed(self.update)
 
-# Plot
-fig, ax = plt.subplots()
-plt.subplots_adjust(bottom=0.55)
-scatter = ax.scatter(df['date'], df['price'])
+        axvline_slider = plt.axes([0.2, 0.15, 0.65, 0.03])
+        vline_slider = Slider(axvline_slider, 'Select Time', 0, self.window_size, valinit=0, valstep=1)
+        vline_slider.on_changed(self.update_vline)
 
-# Set labels and title
-ax.set_xlabel('Time')
-ax.set_ylabel('Price')
-ax.set_title('Share Price Over Time')
+        axsimilarity_slider = plt.axes([0.2, 0.1, 0.65, 0.03])
+        # Adjust the minimum value to 70
+        similarity_slider = Slider(axsimilarity_slider, 'Similarity', 70, 100, valinit=70, valstep=1)
 
-# Define a viewing window size
-window_size = 100  # view 100 data points at a time
+        axbutton = plt.axes([0.8, 0.025, 0.1, 0.04])
+        button = Button(axbutton, 'Select Time')
+        button.on_clicked(self.select)
 
-# Set the initial x-axis limits
-ax.set_xlim(df['date'][0], df['date'][window_size])
+        return slider, vline_slider, similarity_slider, button
 
-# Add a vertical line to indicate the selected timestamp
-vline = ax.axvline(x=df['date'][0], color='red')
+    def update(self, val):
+        pos = int(self.slider.val)
+        end_pos = min(pos + self.window_size, len(self.df) - 1)
+        self.ax.set_xlim(self.df['date'][pos], self.df['date'][end_pos])
 
-# Make the x-axis scrollable
-axslider = plt.axes([0.2, 0.3, 0.65, 0.03])
-slider = Slider(axslider, 'Date', 0, len(df) - window_size, valinit=0, valstep=1)
+    def update_vline(self, val):
+        pos = int(self.slider.val)
+        vline_index = min(pos + int(self.vline_slider.val), len(self.df) - 1)
+        self.vline.set_xdata(self.df['date'][vline_index]) 
 
-# Add another slider to control the vertical line
-axvline_slider = plt.axes([0.2, 0.2, 0.65, 0.03])
-vline_slider = Slider(axvline_slider, 'Select Time', 0, window_size, valinit=0, valstep=1)
+    def select(self, event):
+        pos = int(self.slider.val)
+        self.searchStart = pos + int(self.vline_slider.val)
+        self.similarity_rate = int(self.similarity_slider.val)
+        print(f"Selected Time: {self.df['date'][self.searchStart]}")
+        self.highlight_similar(self.searchStart, pos + self.window_size, self.similarity_rate)
 
-# Add another slider to control similarity rate
-axsimilarity_slider = plt.axes([0.2, 0.1, 0.65, 0.03])
-similarity_slider = Slider(axsimilarity_slider, 'Similarity', 0, 100, valinit=0, valstep=1)
-
-
-def update(val):
-    pos = int(slider.val)
-    end_pos = min(pos + window_size, len(df) - 1)  # Ensure the index does not exceed the DataFrame length
-    ax.set_xlim(df['date'][pos], df['date'][end_pos])
-
-
-slider.on_changed(update)
-
-
-def update_vline(val):
-    pos = int(slider.val)
-    vline_index = min(pos + int(vline_slider.val), len(df) - 1)  # Ensure the index does not exceed the DataFrame length
-    vline.set_xdata(df['date'][vline_index])
-
-
-vline_slider.on_changed(update_vline)
-
-# Add a button for selecting the timestamp
-axbutton = plt.axes([0.8, 0.025, 0.1, 0.04])
-button = Button(axbutton, 'Select Time')
-
-
-def select(event):
-    global searchStart, similarity_rate
-    pos = int(slider.val)
-    searchStart = pos + int(vline_slider.val)
-    similarity_rate = int(similarity_slider.val)
-    print(f"Selected Time: {df['date'][searchStart]}")
-    highlight_similar(searchStart, pos + window_size, similarity_rate)
-
-
-def highlight_similar(start, end, rate):
-    for i in range(len(df) - (end - start)):
-        sim = similarity(start, end, i)
-        if sim >= rate:
-            ax.axvspan(df['date'][i], df['date'][i + (end - start)], edgecolor='yellow', facecolor='none', lw=2)
-            ax.text(df['date'][i], df['price'].max(), f'{int(sim)}%', fontsize=8, ha='left')
-    fig.canvas.draw()
+    def highlight_similar(self, start, end, rate):
+        with ThreadPoolExecutor() as executor:
+            futures = {executor.submit(self.similarity, start, end, i): i for i in range(len(self.df) - (end - start))}
+            for future in as_completed(futures):
+                i = futures[future]
+                sim = future.result()
+                if sim >= rate:
+                    self.ax.axvspan(self.df['date'][i], self.df['date'][i + (end - start)], edgecolor='yellow', 
+                                    facecolor='none', lw=2)
+                    self.ax.text(self.df['date'][i], self.df['price'].max(), f'{int(sim)}%', fontsize=8, ha='left')
+        self.fig.canvas.draw()
 
 
-button.on_clicked(select)
-
-plt.show()
+if __name__ == '__main__':
+    SharePriceViewer()
