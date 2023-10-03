@@ -19,7 +19,6 @@ def fetch_yahoo_finance_data(symbol, interval, period):
     data.set_index('datetime', inplace=True)
     return data
 
-
 class SharePriceViewer:
 
     def __init__(self, symbol, interval, period):
@@ -37,11 +36,11 @@ class SharePriceViewer:
         plt.show()
 
     def similarity(self, start, end, target):
-        pattern = self.df['close'][start:end].values
-        target_pattern = self.df['close'][target:target + (end - start)].values
-        if len(pattern) != len(target_pattern):
+        pattern_ohlc = self.df[['open', 'high', 'low', 'close']][start:end].values.flatten()
+        target_pattern_ohlc = self.df[['open', 'high', 'low', 'close']][target:target + (end - start)].values.flatten()
+        if len(pattern_ohlc) != len(target_pattern_ohlc):
             return 0
-        correlation, _ = pearsonr(pattern, target_pattern)
+        correlation, _ = pearsonr(pattern_ohlc, target_pattern_ohlc)
         similarity = max(0, correlation * 100)
         return similarity
 
@@ -122,7 +121,7 @@ class SharePriceViewer:
 
 
 if __name__ == '__main__':
-    interval = "15m"
-    period = "1mo"
+    interval = "1h"
+    period = "15mo"
     symbol = input("Enter the stock symbol (e.g., MSFT, BTC-USD): ")
     SharePriceViewer(symbol, interval, period)
