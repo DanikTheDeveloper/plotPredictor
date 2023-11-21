@@ -36,11 +36,11 @@ class SharePriceViewer:
         plt.show()
 
     def similarity(self, start, end, target):
-        pattern_ohlc = self.df[['open', 'high', 'low', 'close']][start:end].values.flatten()
-        target_pattern_ohlc = self.df[['open', 'high', 'low', 'close']][target:target + (end - start)].values.flatten()
-        if len(pattern_ohlc) != len(target_pattern_ohlc):
+        pattern_oc = self.df[['open', 'close']][start:end].values.flatten()
+        target_pattern_oc = self.df[['open', 'close']][target:target + (end - start)].values.flatten()
+        if len(pattern_oc) != len(target_pattern_oc):
             return 0
-        correlation, _ = pearsonr(pattern_ohlc, target_pattern_ohlc)
+        correlation, _ = pearsonr(pattern_oc, target_pattern_oc)
         similarity = max(0, correlation * 100)
         return similarity
 
